@@ -15,11 +15,14 @@ SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-default-key")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = ["codeforge-28dy.onrender.com","127.0.0.1"]
+ALLOWED_HOSTS = [
+    '.elasticbeanstalk.com',
+    'django-env.eba-rip3srax.ap-south-1.elasticbeanstalk.com',
+    ]
 
 CSRF_TRUSTED_ORIGINS = [
     "https://codeforge-28dy.onrender.com",
-   "http://127.0.0.1:8000",
+    "https://django-env.eba-rip3srax.ap-south-1.elasticbeanstalk.com",
 ]
 
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
