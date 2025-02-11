@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Editor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .modal {
+            display: none;
+            position: fixed;
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            width: 40%;
+            color: black;
+        }
+        #customAlert {
+            display: none;
+            position: fixed;
+            top: 5%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #721c24;
+            padding: 20px;
+            border: 1px solid #f5c6cb;
+            border-radius: 5px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2);
+            max-width: 400px;
+            width: 100%;
+            z-index: 9999;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+        }
+
+        #progressBar {
+            width: 0;
+            transition: width 1s linear;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+    <!-- Navbar -->
+    <div class="flex justify-between items-center bg-gray-800 p-2">
+        <div class="text-lg font-bold">Editing File: <small>{{ file.file_name }}.{{ file.extension }}</small></div>
+        <div id="projectId" class="text-sm">{{ file.id }}</div>
+    </div>
+    <div class="max-w-4xl mx-auto space-y-4">
+        <div id="customAlert" class="flex items-center p-4 bg-green-100 border-l-4 border-green-500 rounded-lg shadow-lg" role="alert">
+            <div class="flex-shrink-0">
+                <i class="fas fa-check-circle text-green-500 text-xl"></i>
+            </div>
+            <div class="ml-3 flex-1">
+                <p id="msgfield" class="text-sm font-medium text-green-700"></p>
+                <div class="mt-2 h-2 bg-green-200 rounded-full">
+                    <div id="progressBar" class="h-2 bg-green-500 rounded-full w-0"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Editor Header -->
+    <div class="flex justify-between items-center bg-gray-700 p-4 border-b border-gray-600">
+        <div class="flex gap-4">
+            <button type="submit" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded" onclick="ExecuteCode()">Run code</button>
+            <button onclick="clearCode()" class="px-4 py-2 bg-red-500 hover:bg-red-600 rounded">Clear</button>
+            <form id="saveForm" method="post" action="{% url 'saveCode' %}">
+                {% csrf_token %}
+                <input type="hidden" name="file_id" value="{{ file.id }}">
+                <input type="hidden" name="content" id="content">
+                <button type="submit" class="px-4 py-2 bg-green-500 hover:bg-green-600 rounded">Save</button>
+            </form>
+        </div>
+        <div class="flex items-center gap-4">
+            <!-- Theme Selector -->
+            <button class="px-4 py-2 bg-green-500 hover:bg-green-600 rounded" onclick="openSaveAsModal()">Save As</button>
+            <div class="editor-controls">
+                <label for="themeSelector">Theme:</label>
+                <select id="themeSelector" class="px-4 py-2 bg-green-500 hover:bg-green-600 rounded">
+                    <optgroup label="Light Themes">
+                        <option value="vs">Visual Studio (vs)</option>
+                        <option value="hc-light">High Contrast Light</option>
+                    </optgroup>
+                    <optgroup label="Dark Themes">
+                        <option value="vs-dark">Visual Studio Dark (vs-dark)</option>
+                        <option value="hc-black">High Contrast Black</option>
+                        <option value="monokai">Monokai</option>
+                        <option value="dracula">Dracula</option>
+                        <option value="solarized-dark">Solarized Dark</option>
+                        <option value="gruvbox-dark">Gruvbox Dark</option>
+                    </optgroup>
+                </select>
+                             
+                <label for="fontSizeSelector">Font Size:</label>
+                <input id="fontSizeSelector" type="number" value="14" min="8" max="24" step="1" class="px-4 py-2 bg-green-500 hover:bg-green-600 rounded"> px
+            </div>
+            
+            <!-- Font Size Selector -->
+            <!-- <label for="fontSizeSelector">Font Size:</label>
+            <input type="range" id="fontSizeSelector" min="10" max="30" step="1" class="bg-gray-800 text-white px-2 py-1 w-16 rounded">  -->
+        </div>
+        <div id="timedate" class="text-sm">Last Update: {{ file.updated_at }}</div>
+    </div>
+
+    <!-- Monaco Editor -->
+    <p id="contentValue" style="display: none;">{{ file.content }}</p>
+    <div id="editor" class="h-96 border border-gray-600 m-4"></div>
+
+    <!-- Terminal Output -->
+    <div id="terminal" class="h-[180px] w-full mt-4 bg-[#151515] text-[#32cd32] font-mono text-sm border border-gray-700 rounded-md p-2 overflow-y-auto">
+        <p class="font-bold"> 
+            Terminal Output: {{ file_output.output }}
+        </p>
+            <p>{{ file_output.memory }}</p>
+            <p>{{ file_output.cpuTime }}</p>
+    </div>
+    <div id="saveAsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeSaveAsModal()">&times;</span>
+            <div class="modal-header">Save As</div>
+            <form method="post" action="{% url 'updateFile' %}">
+                {% csrf_token %}
+                <input type="hidden" name="file_id" value="{{ file.id }}">
+                <label for="newFileName">File Name</label>
+                <input type="text" name="file_name" id="newFileName" value="{{ file.file_name }}">
+                <label for="newLanguage">Language</label>
+                <select id="language" name="language" style="width: 98%; padding: 8px; margin: 5px 0;">
+                    <option value="{{ file.extension }}">{{ file.extension }}</option>
+                    {% for lang, details in languages.items %}
+                        <option value="{{ lang }}">{{ lang | title }} (v{{ details.version }})</option>
+                    {% endfor %}
+                </select>
+                <label for="newDescription">Description</label>
+                <textarea name="description" id="newDescription" rows="4">{{ file.description }}</textarea>
+                <div class="modal-footer">
+                    <button type="submit">Save As</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script>
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+        let extension = "{{ file.extension }}";
+        let content;
+        let editor; // Declare editor globally
+        function getLanguageMode(extension) {
+            const languageModes = {
+                javascript: "javascript",
+                python3: "python",
+                java: "java",
+                html: "html",
+                css: "css",
+                ruby: "ruby",
+                php: "php",
+                c: "c",
+                cpp: "cpp",
+                markdown: "markdown",
+                sql: "sql"
+            };
+            return languageModes[extension.toLowerCase()] || "javascript";
+        }
+
+        // Clear code
+        function clearCode() {
+            editor.setValue("");
+        }
+        function loadCustomTheme(themeName) {
+        if (themeName === "monokai") {
+            monaco.editor.defineTheme("monokai", {
+                base: "vs-dark",
+                inherit: true,
+                rules: [
+                    { token: "comment", foreground: "75715e" },
+                    { token: "string", foreground: "e6db74" },
+                    { token: "keyword", foreground: "f92672" },
+                    { token: "variable", foreground: "a6e22e" },
+                    { token: "number", foreground: "ae81ff" },
+                ],
+                colors: {
+                    "editor.background": "#272822",
+                    "editor.foreground": "#F8F8F2",
+                    "editor.lineHighlightBackground": "#3E3D32",
+                    "editor.selectionBackground": "#49483E",
+                    "editorCursor.foreground": "#F8F8F0"
+                }
+            });
+        } else if (themeName === "dracula") {
+            monaco.editor.defineTheme("dracula", {
+                base: "vs-dark",
+                inherit: true,
+                rules: [
+                    { token: "comment", foreground: "6272a4" },
+                    { token: "string", foreground: "f1fa8c" },
+                    { token: "keyword", foreground: "ff79c6" },
+                    { token: "variable", foreground: "50fa7b" },
+                    { token: "number", foreground: "bd93f9" },
+                ],
+                colors: {
+                    "editor.background": "#282a36",
+                    "editor.foreground": "#F8F8F2",
+                    "editor.lineHighlightBackground": "#44475a",
+                    "editor.selectionBackground": "#44475a",
+                    "editorCursor.foreground": "#F8F8F2"
+                }
+            });
+        } else if (themeName === "solarized-dark") {
+            monaco.editor.defineTheme("solarized-dark", {
+                base: "vs-dark",
+                inherit: true,
+                rules: [
+                    { token: "comment", foreground: "839496" },
+                    { token: "string", foreground: "2aa198" },
+                    { token: "keyword", foreground: "859900" },
+                    { token: "variable", foreground: "b58900" },
+                    { token: "number", foreground: "d33682" },
+                ],
+                colors: {
+                    "editor.background": "#002b36",
+                    "editor.foreground": "#839496",
+                    "editor.lineHighlightBackground": "#073642",
+                    "editor.selectionBackground": "#073642",
+                    "editorCursor.foreground": "#839496"
+                }
+            });
+        } else if (themeName === "gruvbox-dark") {
+            monaco.editor.defineTheme("gruvbox-dark", {
+                base: "vs-dark",
+                inherit: true,
+                rules: [
+                    { token: "comment", foreground: "928374" },
+                    { token: "string", foreground: "b8bb26" },
+                    { token: "keyword", foreground: "fb4934" },
+                    { token: "variable", foreground: "fabd2f" },
+                    { token: "number", foreground: "d3869b" },
+                ],
+                colors: {
+                    "editor.background": "#282828",
+                    "editor.foreground": "#ebdbb2",
+                    "editor.lineHighlightBackground": "#3c3836",
+                    "editor.selectionBackground": "#504945",
+                    "editorCursor.foreground": "#ebdbb2"
+                }
+            });
+        }
+
+        // Apply the new theme
+        monaco.editor.setTheme(themeName);
+    }
+    document.addEventListener("DOMContentLoaded", function () {
+    if (!window.monacoLoaded) {
+        require(["vs/editor/editor.main"], function () {
+            window.monacoLoaded = true;
+            console.log("✅ Monaco Editor loaded!");
+
+            // Register languages
+            monaco.languages.register({ id: "javascript" });
+            monaco.languages.register({ id: "python" });
+            monaco.languages.register({ id: "java" });
+            monaco.languages.register({ id: "c" });
+            monaco.languages.register({ id: "cpp" });
+            monaco.languages.register({ id: "php" });
+            monaco.languages.register({ id: "sql" });
+            monaco.languages.register({ id: "ruby" });
+            monaco.languages.register({ id: "html" });
+            monaco.languages.register({ id: "css" });
+            monaco.languages.register({ id: "markdown" });
+
+            // Create editor instance
+            window.editor = monaco.editor.create(document.getElementById("editor"), {
+                value: "{{ file.content|escapejs }}",
+                language: getLanguageMode(extension),
+                theme: "vs-dark",
+                fontSize: 16,
+                automaticLayout: true,
+                tabSize: 4,
+                insertSpaces: true,
+                trimAutoWhitespace: true,
+                wordWrap: "on"
+            });
+            // // if(document.getElementById("contentValue").value)
+            //     // window.editor.setValue(document.getElementById("contentValue").value);
+            
+            enableIntelliSense();
+            document.getElementById("themeSelector").addEventListener("change", function (event) {
+                loadCustomTheme(event.target.value)
+            });
+
+            // // FIX: Font Size Change
+            const fontSizeSelector = document.getElementById("fontSizeSelector");
+            if (fontSizeSelector) {
+                fontSizeSelector.addEventListener("input", function () {
+                    if (window.editor) {
+                        window.editor.updateOptions({ fontSize: parseInt(this.value, 10) });
+                    } else {
+                        console.warn("⚠️ Monaco Editor not initialized yet.");
+                    }
+                });
+            } else {
+                console.warn("⚠️ fontSizeSelector element not found.");
+            }
+        });
+    }
+});
+function enableIntelliSense() {
+    monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+        noLib: false,
+        allowNonTsExtensions: true,
+    });
+    monaco.languages.registerCompletionItemProvider("javascript", {
+        provideCompletionItems: function (model, position) {
+            return {
+                suggestions: [
+                    {
+                        label: "console.log",
+                        kind: monaco.languages.CompletionItemKind.Function,
+                        insertText: "console.log(${1:object});",
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: "Logs output to the console"
+                    },
+                    {
+                        label: "fetch",
+                        kind: monaco.languages.CompletionItemKind.Function,
+                        insertText: "fetch('${1:url}').then(response => response.json()).then(data => console.log(data));",
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: "Fetch API for making HTTP requests"
+                    }
+                ]
+            };
+        }
+    });
+    monaco.languages.registerCompletionItemProvider("python", {
+        provideCompletionItems: function (model, position) {
+            return {
+                suggestions: [
+                    {
+                        label: "print",
+                        kind: monaco.languages.CompletionItemKind.Function,
+                        insertText: "print(${1:'Hello, world!'})",
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                        documentation: "Prints output to the console"
+                    },
+                    {
+                        label: "import os",
+                        kind: monaco.languages.CompletionItemKind.Module,
+                        insertText: "import os",
+                        documentation: "Import OS module"
+                    }
+                ]
+            };
+        }
+    });
+
+    console.log("🚀 IntelliSense enabled!");
+}
+        function showCustomAlert(msg) {
+            const alertBox = document.getElementById("customAlert");
+            const msgField = document.getElementById("msgfield");                           // --> Here work not complete 
+            const progressBar = document.getElementById("progressBar");
+
+            msgField.textContent = msg;
+            alertBox.style.display = "flex";
+
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += 10;
+                progressBar.style.width = progress + "%";
+                if (progress >= 100) {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        location.reload(); // Reload after the alert and progress are done
+                    }, 1000); // Delay before reloading to allow full progress display
+                }
+            }, 200); // Update every 200ms to create the progress effect
+        }
+
+       async function ExecuteCode(){
+            const file_id ="{{ file.id }}"
+            data = {
+                "file_id": file_id,
+                "content": window.editor.getValue(),
+                "language": extension,  // ✅ Fixed spelling
+            };
+            try {
+                const response = await fetch(`http://127.0.0.1:8000/execute-code/`, { // Use correct endpoint
+                    method: "POST",
+                    headers: {
+                        "X-CSRFToken": "{{ csrf_token }}",  // Ensure CSRF token is properly included
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(data)  // ✅ Convert JavaScript object to JSON string
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Error ${response.status}: Failed to runing program`);
+                }
+
+                const result = await response.json(); // ✅ Wait for response JSON
+                
+                const terminal = document.getElementById("terminal")
+                terminal.innerHTML=`<p class="font-bold">
+                    Terminal Output: ${result.output}</p>
+                    <p>memory: ${result.memory}</p>
+                    <p>cpuTime: ${result.cpuTime}</p>
+                    <p>error: ${result.error}</p>
+                    <p>exit_code: ${result.exit_code}</p>
+                    `;
+                    showCustomAlert(result.message);
+            } catch (error) {
+                console.error("Error running:", error);
+                showCustomAlert("There was an error runing the file.");
+            }
+        }
+    </script>
+</body>
+</html>
