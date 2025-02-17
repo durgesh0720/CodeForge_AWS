@@ -76,12 +76,14 @@ ASGI_APPLICATION = "eCoading.asgi.application"
 
 # Database Configuration
 DATABASES = {
-    "default": dj_database_url.config(
-        default=os.getenv(
-            "DATABASE_URL",
-            "postgresql://postgres:WuYCUHxVhbzEvEWVBeJkRiWSZrLwTHdT@junction.proxy.rlwy.net:29014/railway",
-        )
-    )
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'codeforge1',
+        'USER': 'postgres',
+        'PASSWORD': 'DUrg7080',
+        'HOST': 'codeforge1.ctsc6agkeiw7.ap-south-1.rds.amazonaws.com',
+        'PORT': '5432',
+    }
 }
 
 # Password validation
